@@ -145,11 +145,7 @@ function App() {
   }, [untilTarget])
 
   useEffect(() => {
-    if (mode === 'until' && !running) {
-      const next = getUntilSeconds()
-      setRemaining(next)
-      setUntilDuration(next)
-    }
+    if (mode === 'until' && !running) setRemaining(getUntilSeconds())
   }, [mode, untilTarget, running, getUntilSeconds])
 
   const syncTimer = useCallback((now = Date.now()) => {
@@ -325,7 +321,7 @@ function TimerPage(props: TimerPageProps) {
     <div className="mode-tabs" role="tablist" aria-label="Timer modes">{(['pomodoro', 'stopwatch', 'until'] as Mode[]).map((item) => <button key={item} className={mode === item ? 'selected' : ''} onClick={() => changeMode(item)}>{modeName(item)}</button>)}</div>
     <div className="timer-stage">
       <div className="stage-meta"><span className={`status-dot ${running ? 'live' : ''}`} />{running ? 'In progress' : 'Ready when you are'}</div>
-      <div className="timer-heading"><span>{phaseLabel}</span>{mode === 'pomodoro' && <span className="session-count">{selectedPreset.focus}/{selectedPreset.break} min</span>}</div>
+      <div className="timer-heading"><span>{phaseLabel}{mode === 'until' && <> <button className="edit-until-button" onClick={() => { if (running) toggleTimer(); }} aria-label="Edit Until timer">(Edit timer)</button></>}</span>{mode === 'pomodoro' && <span className="session-count">{selectedPreset.focus}/{selectedPreset.break} min</span>}</div>
       {mode === 'pomodoro' && <div className="session-context"><div><div className="preset-button-list" role="listbox" aria-label="Pomodoro presets">{presets.map((preset) => <button type="button" role="option" aria-selected={preset.id === selectedPresetId} className={`preset-pill ${preset.id === selectedPresetId ? 'chosen' : ''}`} key={preset.id} onClick={() => changePreset(preset.id)}><span>{preset.name}</span><small>{preset.focus}/{preset.break}</small></button>)}</div></div><div className="next-up-inline"><strong>{phase === 'focus' ? `Break · ${selectedPreset.break} min` : `Focus · ${selectedPreset.focus} min`}</strong></div></div>}
       {mode === 'until' && !running && <div className="until-picker"><label htmlFor="until-target">UNTIL</label><input id="until-target" aria-label="Set target time" type="time" value={untilTarget} onChange={(event) => setUntilTarget(event.target.value)} /><span>{getUntilSeconds() > 0 ? `${Math.ceil(getUntilSeconds() / 60)} min remaining` : 'Choose a future time'}</span></div>}
       <TimerVisual visual={settings.visual} progress={progress} running={running} accent={settings.accent} />
