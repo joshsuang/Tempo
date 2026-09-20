@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode, type CSSProperties } from 'react'
+import CommandPalette from './CommandPalette'
 
 type Mode = 'pomodoro' | 'stopwatch' | 'until'
 type Appearance = 'light' | 'dark' | 'system'
@@ -101,9 +102,9 @@ const playCompletionSound = (volume: number) => {
     oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + .45)
   } catch { /* Audio is optional and can be blocked by the browser. */ }
 }
-const formatUntil = (seconds: number) => {
+const formatUntil = (seconds: number, showSeconds = true) => {
   const safe = Math.max(0, Math.floor(seconds))
-  if (safe >= 3600) return `${Math.floor(safe / 60)} min`
+  if (safe >= 3600 || !showSeconds) return `${Math.floor(safe / 60)} min`
   return formatClock(safe, true)
 }
 const modeName = (mode: Mode) => mode === 'pomodoro' ? 'Pomodoro' : mode === 'stopwatch' ? 'Stopwatch' : 'Until'
@@ -124,9 +125,11 @@ function App() {
   const [running, setRunning] = useState(false)
   const [endAt, setEndAt] = useState<number | null>(null)
   const [stopwatchStartedAt, setStopwatchStartedAt] = useState<number | null>(null)
+  const [untilDuration, setUntilDuration] = useState(0)
   const [showTaskEditor, setShowTaskEditor] = useState(false)
   const [taskDraft, setTaskDraft] = useState(task)
   const [message, setMessage] = useState('')
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ settings, presets, task, selectedPresetId, mode, untilTarget } satisfies Persisted))
@@ -142,7 +145,11 @@ function App() {
   }, [untilTarget])
 
   useEffect(() => {
-    if (mode === 'until' && !running) setRemaining(getUntilSeconds())
+    if (mode === 'until' && !running) {
+      const next = getUntilSeconds()
+      setRemaining(next)
+      setUntilDuration(next)
+    }
   }, [mode, untilTarget, running, getUntilSeconds])
 
   const syncTimer = useCallback((now = Date.now()) => {
@@ -202,6 +209,8 @@ function App() {
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setCommandPaletteOpen(true); return }
+      if (event.key === 'Escape') { setCommandPaletteOpen(false); return }
       if (event.code === 'Space') { event.preventDefault(); toggleTimer() }
       if (event.key.toLowerCase() === 'r') resetTimer()
       if (event.key === '1') changeMode('pomodoro')
@@ -231,9 +240,9 @@ function App() {
     return () => { sentinel?.release().catch(() => undefined) }
   }, [settings.keepAwake, running])
 
-  const totalDuration = mode === 'pomodoro' ? (phase === 'focus' ? selectedPreset.focus : selectedPreset.break) * 60 : mode === 'until' ? Math.max(1, getUntilSeconds()) : Math.max(1, elapsed)
+  const totalDuration = mode === 'pomodoro' ? (phase === 'focus' ? selectedPreset.focus : selectedPreset.break) * 60 : mode === 'until' ? Math.max(1, untilDuration || getUntilSeconds()) : Math.max(1, elapsed)
   const progress = mode === 'stopwatch' ? Math.min(1, elapsed / (60 * 60)) : totalDuration ? (totalDuration - remaining) / totalDuration : 0
-  const displayTime = mode === 'stopwatch' ? formatClock(elapsed, true) : mode === 'until' ? formatUntil(remaining) : formatClock(remaining, settings.showSeconds)
+  const displayTime = mode === 'stopwatch' ? formatClock(elapsed, true) : mode === 'until' ? formatUntil(remaining, settings.showSeconds) : formatClock(remaining, settings.showSeconds)
 
   useEffect(() => {
     const taskSuffix = task.trim() ? ` · ${task.trim()}` : ''
@@ -250,7 +259,7 @@ function App() {
     new Notification(title, { body, icon: '/tempo-icon.svg', tag: 'tempo-timer' })
   }
   function changeMode(next: Mode) {
-    setRunning(false); setEndAt(null); setStopwatchStartedAt(null); setMode(next); setPhase('focus'); setElapsed(0)
+    setRunning(false); setEndAt(null); setStopwatchStartedAt(null); setUntilDuration(0); setMode(next); setPhase('focus'); setElapsed(0)
     setRemaining(next === 'pomodoro' ? selectedPreset.focus * 60 : next === 'until' ? getUntilSeconds() : 0)
     setPage('timer')
   }
@@ -262,6 +271,7 @@ function App() {
       return
     }
     if (mode === 'pomodoro') setEndAt(now + Math.max(0, remaining) * 1000)
+    if (mode === 'until') setUntilDuration(Math.max(1, remaining))
     if (mode === 'stopwatch') setStopwatchStartedAt(now - elapsed * 1000)
     setRunning(true)
     requestNotifications()
@@ -269,11 +279,11 @@ function App() {
   function changePreset(id: string) {
     const next = presets.find((preset) => preset.id === id)
     if (!next) return
-    setRunning(false); setEndAt(null); setStopwatchStartedAt(null); setSelectedPresetId(id); setPhase('focus'); setRemaining(next.focus * 60)
+    setRunning(false); setEndAt(null); setStopwatchStartedAt(null); setUntilDuration(0); setSelectedPresetId(id); setPhase('focus'); setRemaining(next.focus * 60)
   }
   function resetTimer() {
     if (settings.confirmReset && running && !window.confirm('Reset the current timer?')) return
-    setRunning(false); setEndAt(null); setStopwatchStartedAt(null); setPhase('focus'); setElapsed(0)
+    setRunning(false); setEndAt(null); setStopwatchStartedAt(null); setUntilDuration(0); setPhase('focus'); setElapsed(0)
     setRemaining(mode === 'pomodoro' ? selectedPreset.focus * 60 : mode === 'until' ? getUntilSeconds() : 0)
   }
   function saveTask() { setTask(taskDraft.trim()); setShowTaskEditor(false) }
@@ -288,14 +298,15 @@ function App() {
     <main className="main-content">
       <header className="topbar">
         <button className="brand" aria-label="Go to Timer" onClick={() => setPage('timer')}><img className="brand-mark" src="/tempo-icon.svg" alt="" /><span>tempo</span></button>
-        <div className="topbar-heading"><p className="eyebrow">Tempo</p><h1>{page === 'timer' ? 'Tempo' : 'Make it yours.'}</h1></div>
-        <div className="top-actions"><button className={`settings-link ${page === 'settings' ? 'active' : ''}`} aria-label="Open Settings" onClick={() => setPage('settings')}>⚙</button><button className="icon-button" aria-label="Toggle appearance" onClick={() => updateSetting('appearance', settings.appearance === 'dark' ? 'light' : 'dark')}>{settings.appearance === 'dark' ? '☼' : '◐'}</button></div>
+        <div className="topbar-heading"><p className="eyebrow">Tempo</p><h1>{page === 'timer' ? '' : 'Make it yours.'}</h1></div>
+        <div className="top-actions"><button className="command-trigger" aria-label="Open command palette" onClick={() => setCommandPaletteOpen(true)}>⌘K</button><button className={`settings-link ${page === 'settings' ? 'active' : ''}`} aria-label="Open Settings" onClick={() => setPage('settings')}>⚙</button><button className="icon-button" aria-label="Toggle appearance" onClick={() => updateSetting('appearance', settings.appearance === 'dark' ? 'light' : 'dark')}>{settings.appearance === 'dark' ? '☼' : '◐'}</button></div>
       </header>
 
       {page === 'timer' && <TimerPage {...{ mode, changeMode, selectedPreset, selectedPresetId, changePreset, presets, phase, remaining, elapsed, running, toggleTimer, resetTimer, displayTime, progress, task, setShowTaskEditor, settings, untilTarget, setUntilTarget, getUntilSeconds }} />}
       {page === 'settings' && <SettingsPage settings={settings} presets={presets} setPresets={setPresets} selectedPresetId={selectedPresetId} changePreset={changePreset} notify={notify} updateSetting={updateSetting} resetAll={resetAll} onClose={() => setPage('timer')} />}
       {showTaskEditor && <TaskModal value={taskDraft} setValue={setTaskDraft} onClose={() => setShowTaskEditor(false)} onSave={saveTask} />}
       {message && <div className="toast">{message}</div>}
+      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} mode={mode} running={running} onStartPause={toggleTimer} onReset={resetTimer} onMode={changeMode} onSettings={() => { setPage('settings'); setCommandPaletteOpen(false) }} onAppearance={() => updateSetting('appearance', settings.appearance === 'dark' ? 'light' : 'dark')} />
     </main>
   </div>
 }
@@ -316,13 +327,13 @@ function TimerPage(props: TimerPageProps) {
       <div className="stage-meta"><span className={`status-dot ${running ? 'live' : ''}`} />{running ? 'In progress' : 'Ready when you are'}</div>
       <div className="timer-heading"><span>{phaseLabel}</span>{mode === 'pomodoro' && <span className="session-count">{selectedPreset.focus}/{selectedPreset.break} min</span>}</div>
       {mode === 'pomodoro' && <div className="session-context"><div><div className="preset-button-list" role="listbox" aria-label="Pomodoro presets">{presets.map((preset) => <button type="button" role="option" aria-selected={preset.id === selectedPresetId} className={`preset-pill ${preset.id === selectedPresetId ? 'chosen' : ''}`} key={preset.id} onClick={() => changePreset(preset.id)}><span>{preset.name}</span><small>{preset.focus}/{preset.break}</small></button>)}</div></div><div className="next-up-inline"><strong>{phase === 'focus' ? `Break · ${selectedPreset.break} min` : `Focus · ${selectedPreset.focus} min`}</strong></div></div>}
-      {mode === 'until' && <div className="until-picker"><label htmlFor="until-target">UNTIL</label><input id="until-target" aria-label="Set target time" type="time" value={untilTarget} onChange={(event) => setUntilTarget(event.target.value)} /><span>{getUntilSeconds() > 0 ? `${Math.ceil(getUntilSeconds() / 60)} min remaining` : 'Choose a future time'}</span></div>}
+      {mode === 'until' && !running && <div className="until-picker"><label htmlFor="until-target">UNTIL</label><input id="until-target" aria-label="Set target time" type="time" value={untilTarget} onChange={(event) => setUntilTarget(event.target.value)} /><span>{getUntilSeconds() > 0 ? `${Math.ceil(getUntilSeconds() / 60)} min remaining` : 'Choose a future time'}</span></div>}
       <TimerVisual visual={settings.visual} progress={progress} running={running} accent={settings.accent} />
       <div className="timer-readout" aria-live="polite">{displayTime}</div>
       <div className="timer-controls"><button className="primary-button" aria-label={running ? 'Pause timer' : 'Start timer'} onClick={toggleTimer}><span>{running ? 'Ⅱ' : '▶'}</span><em>{running ? 'Pause' : 'Start'}</em></button><button className="secondary-button" aria-label="Reset timer" onClick={resetTimer}><span className="reset-icon">↻</span><em>Reset</em> <span className="shortcut">R</span></button></div>
       <div className="task-row"><div className="task-icon">⌁</div><div className="task-copy">{task ? <><span className="task-label">FOCUSING ON</span><strong>{task}</strong></> : <span className="empty-task">What are you focusing on?</span>}</div><button className="edit-task" onClick={() => setShowTaskEditor(true)}>{task ? 'Edit' : 'Add task'}</button></div>
     </div>
-    <div className="timer-footer"><div className="shortcut-hint"><span>Shortcuts</span><kbd>Space</kbd><kbd>R</kbd></div></div>
+
   </section>
 }
 
