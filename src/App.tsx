@@ -218,7 +218,7 @@ function App() {
     localStorage.removeItem(STORAGE_KEY); window.location.reload()
   }
 
-  return <div className="app-shell">
+  return <div className={`app-shell ${running ? 'focus-mode' : ''}`}>
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">◒</span><span>tempo</span></div>
       <nav className="main-nav" aria-label="Main navigation">
