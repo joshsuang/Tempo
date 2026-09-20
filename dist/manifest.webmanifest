@@ -1,0 +1,17 @@
+{
+  "name": "Tempo — Focus, in your rhythm",
+  "short_name": "Tempo",
+  "description": "A calm, minimal focus timer.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#5b5ce2",
+  "icons": [
+    {
+      "src": "/tempo-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

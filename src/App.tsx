@@ -21,6 +21,8 @@ type Settings = {
   sound: boolean
   volume: number
   rememberLastMode: boolean
+  focusMode: boolean
+  notifications: boolean
   lastMode: Mode
 }
 type Persisted = {
@@ -58,7 +60,7 @@ const initialPresets: Preset[] = [
 const initialSettings: Settings = {
   appearance: 'light', accent: '#5b5ce2', defaultMode: 'pomodoro', defaultPresetId: 'deep-work', visual: 'circle',
   autoStartBreaks: true, autoStartFocus: false, showSeconds: true, confirmReset: true, keepAwake: false,
-  sound: true, volume: 70, rememberLastMode: true, lastMode: 'pomodoro',
+  sound: true, volume: 70, rememberLastMode: true, focusMode: true, notifications: true, lastMode: 'pomodoro',
 }
 
 const readStorage = (): Persisted => {
@@ -120,6 +122,8 @@ function App() {
   const [remaining, setRemaining] = useState(selectedPreset.focus * 60)
   const [elapsed, setElapsed] = useState(0)
   const [running, setRunning] = useState(false)
+  const [endAt, setEndAt] = useState<number | null>(null)
+  const [stopwatchStartedAt, setStopwatchStartedAt] = useState<number | null>(null)
   const [showTaskEditor, setShowTaskEditor] = useState(false)
   const [taskDraft, setTaskDraft] = useState(task)
   const [message, setMessage] = useState('')
@@ -138,31 +142,67 @@ function App() {
   }, [untilTarget])
 
   useEffect(() => {
+    if (mode === 'until' && !running) setRemaining(getUntilSeconds())
+  }, [mode, untilTarget, running, getUntilSeconds])
+
+  const syncTimer = useCallback((now = Date.now()) => {
     if (!running) return
-    const interval = window.setInterval(() => {
-      if (mode === 'stopwatch') setElapsed((value) => value + 1)
-      else if (mode === 'until') setRemaining(getUntilSeconds())
-      else {
-        setRemaining((value) => {
-          if (value > 1) return value - 1
-          if (settings.sound) playCompletionSound(settings.volume)
-          const nextPhase: SessionPhase = phase === 'focus' ? 'break' : 'focus'
-          const nextDuration = nextPhase === 'focus' ? selectedPreset.focus * 60 : selectedPreset.break * 60
-          setPhase(nextPhase)
-          if ((nextPhase === 'break' && settings.autoStartBreaks) || (nextPhase === 'focus' && settings.autoStartFocus)) return nextDuration
+    if (mode === 'stopwatch') {
+      if (stopwatchStartedAt !== null) setElapsed(Math.max(0, Math.floor((now - stopwatchStartedAt) / 1000)))
+      return
+    }
+    if (mode === 'until') {
+      const next = getUntilSeconds()
+      setRemaining((value) => {
+        if (value > 0 && next <= 0) {
+          notifyDesktop('Until timer complete', task || 'Your target time has arrived')
           setRunning(false)
-          return nextDuration
-        })
+          setEndAt(null)
+        }
+        return next
+      })
+      return
+    }
+    if (endAt === null) return
+    let nextPhase = phase
+    let nextEnd = endAt
+    let nextDuration = nextPhase === 'focus' ? selectedPreset.focus * 60 : selectedPreset.break * 60
+    while (now >= nextEnd) {
+      if (settings.sound) playCompletionSound(settings.volume)
+      nextPhase = nextPhase === 'focus' ? 'break' : 'focus'
+      nextDuration = nextPhase === 'focus' ? selectedPreset.focus * 60 : selectedPreset.break * 60
+      const title = nextPhase === 'break' ? 'Focus complete · Break starting' : 'Break complete · Focus starting'
+      notifyDesktop(title, task || `${selectedPreset.name} session`)
+      nextEnd += nextDuration * 1000
+      const shouldContinue = (nextPhase === 'break' && settings.autoStartBreaks) || (nextPhase === 'focus' && settings.autoStartFocus)
+      if (!shouldContinue) {
+        setPhase(nextPhase); setRemaining(nextDuration); setRunning(false); setEndAt(null)
+        return
       }
-    }, 1000)
+    }
+    setPhase(nextPhase)
+    setEndAt(nextEnd)
+    setRemaining(Math.max(0, Math.ceil((nextEnd - now) / 1000)))
+  }, [running, mode, phase, endAt, stopwatchStartedAt, selectedPreset, settings.autoStartBreaks, settings.autoStartFocus, settings.sound, settings.volume, getUntilSeconds, task])
+
+  useEffect(() => {
+    if (!running) return
+    syncTimer()
+    const interval = window.setInterval(() => syncTimer(), 1000)
     return () => window.clearInterval(interval)
-  }, [running, mode, phase, selectedPreset, settings.autoStartBreaks, settings.autoStartFocus, getUntilSeconds])
+  }, [running, syncTimer])
+
+  useEffect(() => {
+    const handleVisibility = () => { if (!document.hidden) syncTimer() }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [syncTimer])
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
-      if (event.code === 'Space') { event.preventDefault(); setRunning((value) => !value) }
+      if (event.code === 'Space') { event.preventDefault(); toggleTimer() }
       if (event.key.toLowerCase() === 'r') resetTimer()
       if (event.key === '1') changeMode('pomodoro')
       if (event.key === '2') changeMode('stopwatch')
@@ -195,19 +235,45 @@ function App() {
   const progress = mode === 'stopwatch' ? Math.min(1, elapsed / (60 * 60)) : totalDuration ? (totalDuration - remaining) / totalDuration : 0
   const displayTime = mode === 'stopwatch' ? formatClock(elapsed, true) : mode === 'until' ? formatUntil(remaining) : formatClock(remaining, settings.showSeconds)
 
+  useEffect(() => {
+    const taskSuffix = task.trim() ? ` · ${task.trim()}` : ''
+    document.title = `${displayTime}${taskSuffix} — Tempo`
+    return () => { document.title = 'Tempo — Focus, in your rhythm' }
+  }, [displayTime, task])
+
+  function requestNotifications() {
+    if (!settings.notifications || !('Notification' in window)) return
+    if (Notification.permission === 'default') Notification.requestPermission().catch(() => undefined)
+  }
+  function notifyDesktop(title: string, body: string) {
+    if (!settings.notifications || !('Notification' in window) || Notification.permission !== 'granted') return
+    new Notification(title, { body, icon: '/tempo-icon.svg', tag: 'tempo-timer' })
+  }
   function changeMode(next: Mode) {
-    setRunning(false); setMode(next); setPhase('focus'); setElapsed(0)
+    setRunning(false); setEndAt(null); setStopwatchStartedAt(null); setMode(next); setPhase('focus'); setElapsed(0)
     setRemaining(next === 'pomodoro' ? selectedPreset.focus * 60 : next === 'until' ? getUntilSeconds() : 0)
     setPage('timer')
+  }
+  function toggleTimer() {
+    const now = Date.now()
+    if (running) {
+      syncTimer(now)
+      setRunning(false); setEndAt(null); setStopwatchStartedAt(null)
+      return
+    }
+    if (mode === 'pomodoro') setEndAt(now + Math.max(0, remaining) * 1000)
+    if (mode === 'stopwatch') setStopwatchStartedAt(now - elapsed * 1000)
+    setRunning(true)
+    requestNotifications()
   }
   function changePreset(id: string) {
     const next = presets.find((preset) => preset.id === id)
     if (!next) return
-    setRunning(false); setSelectedPresetId(id); setPhase('focus'); setRemaining(next.focus * 60)
+    setRunning(false); setEndAt(null); setStopwatchStartedAt(null); setSelectedPresetId(id); setPhase('focus'); setRemaining(next.focus * 60)
   }
   function resetTimer() {
     if (settings.confirmReset && running && !window.confirm('Reset the current timer?')) return
-    setRunning(false); setPhase('focus'); setElapsed(0)
+    setRunning(false); setEndAt(null); setStopwatchStartedAt(null); setPhase('focus'); setElapsed(0)
     setRemaining(mode === 'pomodoro' ? selectedPreset.focus * 60 : mode === 'until' ? getUntilSeconds() : 0)
   }
   function saveTask() { setTask(taskDraft.trim()); setShowTaskEditor(false) }
@@ -218,26 +284,16 @@ function App() {
     localStorage.removeItem(STORAGE_KEY); window.location.reload()
   }
 
-  return <div className={`app-shell ${running ? 'focus-mode' : ''}`}>
-    <aside className="sidebar">
-      <div className="brand"><span className="brand-mark">◒</span><span>tempo</span></div>
-      <nav className="main-nav" aria-label="Main navigation">
-        <NavItem active={page === 'timer'} onClick={() => setPage('timer')} icon="◷" label="Timer" />
-        <NavItem active={page === 'presets'} onClick={() => setPage('presets')} icon="▦" label="Presets" />
-        <NavItem active={page === 'settings'} onClick={() => setPage('settings')} icon="⚙" label="Settings" />
-      </nav>
-      <div className="sidebar-bottom"><span className="keyboard-dot">⌘</span><span>Built for focus</span></div>
-    </aside>
-
+  return <div className={`app-shell ${running && settings.focusMode ? 'focus-mode' : ''}`}>
     <main className="main-content">
       <header className="topbar">
-        <div><p className="eyebrow">{page === 'timer' ? 'Good to see you' : 'Tempo'}</p><h1>{page === 'timer' ? 'Focus, in your rhythm.' : page === 'presets' ? 'Your presets.' : 'Make it yours.'}</h1></div>
-        <div className="top-actions"><button className="icon-button" aria-label="Toggle appearance" onClick={() => updateSetting('appearance', settings.appearance === 'dark' ? 'light' : 'dark')}>{settings.appearance === 'dark' ? '☼' : '◐'}</button><div className="avatar">A</div></div>
+        <button className="brand" aria-label="Go to Timer" onClick={() => setPage('timer')}><img className="brand-mark" src="/tempo-icon.svg" alt="" /><span>tempo</span></button>
+        <div className="topbar-heading"><p className="eyebrow">Tempo</p><h1>{page === 'timer' ? 'Tempo' : 'Make it yours.'}</h1></div>
+        <div className="top-actions"><button className={`settings-link ${page === 'settings' ? 'active' : ''}`} aria-label="Open Settings" onClick={() => setPage('settings')}>⚙</button><button className="icon-button" aria-label="Toggle appearance" onClick={() => updateSetting('appearance', settings.appearance === 'dark' ? 'light' : 'dark')}>{settings.appearance === 'dark' ? '☼' : '◐'}</button></div>
       </header>
 
-      {page === 'timer' && <TimerPage {...{ mode, changeMode, selectedPreset, selectedPresetId, changePreset, presets, phase, remaining, elapsed, running, setRunning, resetTimer, displayTime, progress, task, setShowTaskEditor, settings, untilTarget, setUntilTarget, getUntilSeconds }} />}
-      {page === 'presets' && <PresetsPage presets={presets} setPresets={setPresets} selectedPresetId={selectedPresetId} changePreset={changePreset} notify={notify} />}
-      {page === 'settings' && <SettingsPage settings={settings} presets={presets} updateSetting={updateSetting} resetAll={resetAll} />}
+      {page === 'timer' && <TimerPage {...{ mode, changeMode, selectedPreset, selectedPresetId, changePreset, presets, phase, remaining, elapsed, running, toggleTimer, resetTimer, displayTime, progress, task, setShowTaskEditor, settings, untilTarget, setUntilTarget, getUntilSeconds }} />}
+      {page === 'settings' && <SettingsPage settings={settings} presets={presets} setPresets={setPresets} selectedPresetId={selectedPresetId} changePreset={changePreset} notify={notify} updateSetting={updateSetting} resetAll={resetAll} onClose={() => setPage('timer')} />}
       {showTaskEditor && <TaskModal value={taskDraft} setValue={setTaskDraft} onClose={() => setShowTaskEditor(false)} onSave={saveTask} />}
       {message && <div className="toast">{message}</div>}
     </main>
@@ -249,26 +305,24 @@ function NavItem({ active, onClick, icon, label }: { active: boolean; onClick: (
 }
 
 type TimerPageProps = {
-  mode: Mode; changeMode: (mode: Mode) => void; selectedPreset: Preset; selectedPresetId: string; changePreset: (id: string) => void; presets: Preset[]; phase: SessionPhase; remaining: number; elapsed: number; running: boolean; setRunning: (value: boolean | ((value: boolean) => boolean)) => void; resetTimer: () => void; displayTime: string; progress: number; task: string; setShowTaskEditor: (value: boolean) => void; settings: Settings; untilTarget: string; setUntilTarget: (value: string) => void; getUntilSeconds: () => number
+  mode: Mode; changeMode: (mode: Mode) => void; selectedPreset: Preset; selectedPresetId: string; changePreset: (id: string) => void; presets: Preset[]; phase: SessionPhase; remaining: number; elapsed: number; running: boolean; toggleTimer: () => void; resetTimer: () => void; displayTime: string; progress: number; task: string; setShowTaskEditor: (value: boolean) => void; settings: Settings; untilTarget: string; setUntilTarget: (value: string) => void; getUntilSeconds: () => number
 }
 function TimerPage(props: TimerPageProps) {
-  const { mode, changeMode, selectedPreset, selectedPresetId, changePreset, presets, phase, running, setRunning, resetTimer, displayTime, progress, task, setShowTaskEditor, settings, untilTarget, setUntilTarget, getUntilSeconds } = props
+  const { mode, changeMode, selectedPreset, selectedPresetId, changePreset, presets, phase, running, toggleTimer, resetTimer, displayTime, progress, task, setShowTaskEditor, settings, untilTarget, setUntilTarget, getUntilSeconds } = props
   const phaseLabel = mode === 'pomodoro' ? (phase === 'focus' ? 'Focus session' : 'Break time') : mode === 'stopwatch' ? 'Open-ended' : 'Until your target'
   return <section className="timer-page">
     <div className="mode-tabs" role="tablist" aria-label="Timer modes">{(['pomodoro', 'stopwatch', 'until'] as Mode[]).map((item) => <button key={item} className={mode === item ? 'selected' : ''} onClick={() => changeMode(item)}>{modeName(item)}</button>)}</div>
     <div className="timer-stage">
       <div className="stage-meta"><span className={`status-dot ${running ? 'live' : ''}`} />{running ? 'In progress' : 'Ready when you are'}</div>
       <div className="timer-heading"><span>{phaseLabel}</span>{mode === 'pomodoro' && <span className="session-count">{selectedPreset.focus}/{selectedPreset.break} min</span>}</div>
+      {mode === 'pomodoro' && <div className="session-context"><div><div className="preset-button-list" role="listbox" aria-label="Pomodoro presets">{presets.map((preset) => <button type="button" role="option" aria-selected={preset.id === selectedPresetId} className={`preset-pill ${preset.id === selectedPresetId ? 'chosen' : ''}`} key={preset.id} onClick={() => changePreset(preset.id)}><span>{preset.name}</span><small>{preset.focus}/{preset.break}</small></button>)}</div></div><div className="next-up-inline"><strong>{phase === 'focus' ? `Break · ${selectedPreset.break} min` : `Focus · ${selectedPreset.focus} min`}</strong></div></div>}
+      {mode === 'until' && <div className="until-picker"><label htmlFor="until-target">UNTIL</label><input id="until-target" aria-label="Set target time" type="time" value={untilTarget} onChange={(event) => setUntilTarget(event.target.value)} /><span>{getUntilSeconds() > 0 ? `${Math.ceil(getUntilSeconds() / 60)} min remaining` : 'Choose a future time'}</span></div>}
       <TimerVisual visual={settings.visual} progress={progress} running={running} accent={settings.accent} />
       <div className="timer-readout" aria-live="polite">{displayTime}</div>
-      <div className="timer-controls"><button className="primary-button" onClick={() => setRunning((value) => !value)}><span>{running ? 'Ⅱ' : '▶'}</span>{running ? 'Pause' : 'Start'}</button><button className="secondary-button" onClick={resetTimer}>Reset <span className="shortcut">R</span></button></div>
+      <div className="timer-controls"><button className="primary-button" aria-label={running ? 'Pause timer' : 'Start timer'} onClick={toggleTimer}><span>{running ? 'Ⅱ' : '▶'}</span><em>{running ? 'Pause' : 'Start'}</em></button><button className="secondary-button" aria-label="Reset timer" onClick={resetTimer}><span className="reset-icon">↻</span><em>Reset</em> <span className="shortcut">R</span></button></div>
       <div className="task-row"><div className="task-icon">⌁</div><div className="task-copy">{task ? <><span className="task-label">FOCUSING ON</span><strong>{task}</strong></> : <span className="empty-task">What are you focusing on?</span>}</div><button className="edit-task" onClick={() => setShowTaskEditor(true)}>{task ? 'Edit' : 'Add task'}</button></div>
     </div>
-    <div className="timer-footer">
-      <div className="context-block"><span className="context-label">{mode === 'pomodoro' ? 'CURRENT PRESET' : mode === 'until' ? 'TARGET TIME' : 'SESSION'}</span>{mode === 'pomodoro' ? <div className="preset-button-list" role="listbox" aria-label="Current Pomodoro preset">{presets.map((preset) => <button type="button" role="option" aria-selected={preset.id === selectedPresetId} className={`preset-pill ${preset.id === selectedPresetId ? 'chosen' : ''}`} key={preset.id} onClick={() => changePreset(preset.id)}><span>{preset.name}</span><small>{preset.focus}/{preset.break}</small></button>)}</div> : mode === 'until' ? <div className="until-input"><input aria-label="Target time" type="time" value={untilTarget} onChange={(event) => setUntilTarget(event.target.value)} /> <span>{getUntilSeconds() > 0 ? `${Math.ceil(getUntilSeconds() / 60)} min remaining` : 'Choose a future time'}</span></div> : <span className="footer-value">No time limit</span>}</div>
-      <div className="context-block"><span className="context-label">NEXT UP</span><span className="footer-value">{mode === 'pomodoro' ? phase === 'focus' ? `Break · ${selectedPreset.break} min` : `Focus · ${selectedPreset.focus} min` : 'Take your time'}</span></div>
-      <div className="shortcut-hint"><span>Shortcuts</span><kbd>Space</kbd><kbd>R</kbd></div>
-    </div>
+    <div className="timer-footer"><div className="shortcut-hint"><span>Shortcuts</span><kbd>Space</kbd><kbd>R</kbd></div></div>
   </section>
 }
 
@@ -285,7 +339,7 @@ function TimerVisual({ visual, progress, running, accent }: { visual: Visual; pr
   return <div className="visual-wrap circle-visual"><svg viewBox="0 0 280 280" aria-hidden="true"><circle className="circle-track" cx="140" cy="140" r="116" /><circle className="circle-progress" cx="140" cy="140" r="116" style={{ stroke: accent, strokeDasharray: circumference, strokeDashoffset: circumference * (1 - safeProgress) }} /></svg><div className="circle-tick top" /><div className="circle-tick bottom" /></div>
 }
 
-function PresetsPage({ presets, setPresets, selectedPresetId, changePreset, notify }: { presets: Preset[]; setPresets: (value: Preset[] | ((value: Preset[]) => Preset[])) => void; selectedPresetId: string; changePreset: (id: string) => void; notify: (message: string) => void }) {
+function PresetsPage({ presets, setPresets, selectedPresetId, changePreset, notify, embedded = false }: { presets: Preset[]; setPresets: (value: Preset[] | ((value: Preset[]) => Preset[])) => void; selectedPresetId: string; changePreset: (id: string) => void; notify: (message: string) => void; embedded?: boolean }) {
   const [editing, setEditing] = useState<Preset | null>(null)
   const [isNew, setIsNew] = useState(false)
   function openNew() { setEditing({ id: `preset-${Date.now()}`, name: '', focus: 25, break: 5 }); setIsNew(true) }
@@ -299,14 +353,15 @@ function PresetsPage({ presets, setPresets, selectedPresetId, changePreset, noti
     if (!window.confirm('Delete this preset?')) return
     setPresets((current) => current.filter((preset) => preset.id !== id)); notify('Preset deleted')
   }
-  return <section className="content-section presets-page"><div className="section-intro"><div><p className="eyebrow">Personal rhythms</p><p className="section-description">Save the sessions that help you get into a flow state.</p></div><button className="primary-button small" onClick={openNew}>＋ New preset</button></div><div className="preset-list">{presets.map((preset) => <div className={`preset-row ${preset.id === selectedPresetId ? 'active-row' : ''}`} key={preset.id} role="button" tabIndex={0} aria-label={`Use ${preset.name} preset`} onClick={() => { changePreset(preset.id); notify(`${preset.name} selected`) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); changePreset(preset.id); notify(`${preset.name} selected`) } }}><div className="preset-symbol">{preset.id === selectedPresetId ? '✓' : '◷'}</div><div className="preset-main"><strong>{preset.name}</strong><span>{preset.focus} min focus <i>·</i> {preset.break} min break</span></div>{preset.id === selectedPresetId && <span className="default-badge">Current</span>}<button className="row-action" onClick={(event) => { event.stopPropagation(); setEditing(preset); setIsNew(false) }}>Edit</button><button className="delete-action" onClick={(event) => { event.stopPropagation(); remove(preset.id) }}>Delete</button></div>)}</div>{editing && <div className="modal-backdrop"><div className="modal"><div className="modal-header"><div><p className="eyebrow">{isNew ? 'New preset' : 'Edit preset'}</p><h2>{isNew ? 'Find your pace.' : 'Tune this session.'}</h2></div><button className="close-button" onClick={() => setEditing(null)}>×</button></div><label>Preset name<input autoFocus value={editing.name} placeholder="Deep work" onChange={(event) => setEditing({ ...editing, name: event.target.value })} /></label><div className="form-grid"><label>Focus <span className="input-suffix"><input type="number" min="1" max="720" value={editing.focus} onChange={(event) => setEditing({ ...editing, focus: Number(event.target.value) })} /><b>min</b></span></label><label>Break <span className="input-suffix"><input type="number" min="0" max="180" value={editing.break} onChange={(event) => setEditing({ ...editing, break: Number(event.target.value) })} /><b>min</b></span></label></div><div className="modal-actions"><button className="secondary-button" onClick={() => setEditing(null)}>Cancel</button><button className="primary-button" onClick={save}>Save preset</button></div></div></div>}</section>
+  return <section id={embedded ? 'settings-presets' : undefined} className={`content-section presets-page ${embedded ? 'embedded-presets' : ''}`}><div className="section-intro"><div><p className="eyebrow">Personal rhythms</p><p className="section-description">Save the sessions that help you get into a flow state.</p></div><button className="primary-button small" onClick={openNew}>＋ New preset</button></div><div className="preset-list">{presets.map((preset) => <div className={`preset-row ${preset.id === selectedPresetId ? 'active-row' : ''}`} key={preset.id} role="button" tabIndex={0} aria-label={`Use ${preset.name} preset`} onClick={() => { changePreset(preset.id); notify(`${preset.name} selected`) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); changePreset(preset.id); notify(`${preset.name} selected`) } }}><div className="preset-symbol">{preset.id === selectedPresetId ? '✓' : '◷'}</div><div className="preset-main"><strong>{preset.name}</strong><span>{preset.focus} min focus <i>·</i> {preset.break} min break</span></div>{preset.id === selectedPresetId && <span className="default-badge">Current</span>}<button className="row-action" onClick={(event) => { event.stopPropagation(); setEditing(preset); setIsNew(false) }}>Edit</button><button className="delete-action" onClick={(event) => { event.stopPropagation(); remove(preset.id) }}>Delete</button></div>)}</div>{editing && <div className="modal-backdrop"><div className="modal"><div className="modal-header"><div><p className="eyebrow">{isNew ? 'New preset' : 'Edit preset'}</p><h2>{isNew ? 'Find your pace.' : 'Tune this session.'}</h2></div><button className="close-button" onClick={() => setEditing(null)}>×</button></div><label>Preset name<input autoFocus value={editing.name} placeholder="Deep work" onChange={(event) => setEditing({ ...editing, name: event.target.value })} /></label><div className="form-grid"><label>Focus <span className="input-suffix"><input type="number" min="1" max="720" value={editing.focus} onChange={(event) => setEditing({ ...editing, focus: Number(event.target.value) })} /><b>min</b></span></label><label>Break <span className="input-suffix"><input type="number" min="0" max="180" value={editing.break} onChange={(event) => setEditing({ ...editing, break: Number(event.target.value) })} /><b>min</b></span></label></div><div className="modal-actions"><button className="secondary-button" onClick={() => setEditing(null)}>Cancel</button><button className="primary-button" onClick={save}>Save preset</button></div></div></div>}</section>
 }
 
-function SettingsPage({ settings, presets, updateSetting, resetAll }: { settings: Settings; presets: Preset[]; updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void; resetAll: () => void }) {
-  return <section className="content-section settings-page"><div className="settings-layout"><div className="settings-nav"><p className="eyebrow">Preferences</p><button className="settings-nav-active">Timer</button><button>Appearance</button><button>Timer visual</button><button>Sounds</button><button>Behavior</button><button>Data</button></div><div className="settings-content"><SettingGroup title="Timer" description="Set the way a session begins and ends."><SettingRow label="Default timer mode" description="The mode shown when Tempo opens."><select value={settings.defaultMode} onChange={(event) => updateSetting('defaultMode', event.target.value as Mode)}><option value="pomodoro">Pomodoro</option><option value="stopwatch">Stopwatch</option><option value="until">Until</option></select></SettingRow><SettingRow label="Default Pomodoro preset" description="Your starting rhythm for new sessions."><select value={settings.defaultPresetId} onChange={(event) => updateSetting('defaultPresetId', event.target.value)}>{presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name} · {preset.focus}/{preset.break}</option>)}</select></SettingRow><SettingRow label="Automatically start breaks" description="Move into the break without stopping."><Toggle checked={settings.autoStartBreaks} onChange={(value) => updateSetting('autoStartBreaks', value)} /></SettingRow><SettingRow label="Automatically start focus sessions" description="Start the next focus after a break."><Toggle checked={settings.autoStartFocus} onChange={(value) => updateSetting('autoStartFocus', value)} /></SettingRow><SettingRow label="Show seconds" description="Keep seconds visible during countdowns."><Toggle checked={settings.showSeconds} onChange={(value) => updateSetting('showSeconds', value)} /></SettingRow><SettingRow label="Confirm before resetting" description="Prevent accidental resets while running."><Toggle checked={settings.confirmReset} onChange={(value) => updateSetting('confirmReset', value)} /></SettingRow></SettingGroup><SettingGroup title="Appearance" description="A quiet canvas for your attention."><SettingRow label="Color mode" description="Choose light, dark, or follow your system."><div className="segmented">{(['light', 'dark', 'system'] as Appearance[]).map((item) => <button className={settings.appearance === item ? 'selected' : ''} key={item} onClick={() => updateSetting('appearance', item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div></SettingRow><SettingRow label="Accent color" description="Used sparingly for progress and focus states."><div className="accent-picker">{accents.map((accent) => <button key={accent.value} aria-label={accent.name} className={settings.accent === accent.value ? 'accent-selected' : ''} style={{ background: accent.value }} onClick={() => updateSetting('accent', accent.value)} />)}<input aria-label="Custom accent color" type="color" value={settings.accent} onChange={(event) => updateSetting('accent', event.target.value)} /></div></SettingRow></SettingGroup><SettingGroup title="Timer visual" description="Choose the way time moves in front of you."><div className="visual-grid">{visualOptions.map((option) => <button className={`visual-option ${settings.visual === option.id ? 'selected' : ''}`} key={option.id} onClick={() => updateSetting('visual', option.id)}><div className={`mini-visual mini-${option.id}`}><span /></div><strong>{option.label}</strong><small>{option.description}</small></button>)}</div></SettingGroup><SettingGroup title="Sounds & behavior" description="Keep the environment supportive and quiet."><SettingRow label="Completion sound" description="A soft cue when a session ends."><Toggle checked={settings.sound} onChange={(value) => updateSetting('sound', value)} /></SettingRow><SettingRow label="Volume" description="Completion sound volume."><input className="range" type="range" min="0" max="100" value={settings.volume} onChange={(event) => updateSetting('volume', Number(event.target.value))} /></SettingRow><SettingRow label="Keep screen awake" description="Request the browser to keep your display awake while running."><Toggle checked={settings.keepAwake} onChange={(value) => updateSetting('keepAwake', value)} /></SettingRow><SettingRow label="Keyboard shortcuts" description="Space start/pause · R reset · 1/2/3 switch modes."><span className="shortcut-list"><kbd>Space</kbd><kbd>R</kbd><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span></SettingRow></SettingGroup><SettingGroup title="Data" description="Tempo keeps everything on this device. No account required."><button className="danger-button" onClick={resetAll}>Reset all Tempo settings</button></SettingGroup></div></div></section>
+function SettingsPage({ settings, presets, setPresets, selectedPresetId, changePreset, notify, updateSetting, resetAll, onClose }: { settings: Settings; presets: Preset[]; setPresets: (value: Preset[] | ((value: Preset[]) => Preset[])) => void; selectedPresetId: string; changePreset: (id: string) => void; notify: (message: string) => void; updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void; resetAll: () => void; onClose: () => void }) {
+  const jumpTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  return <section className="content-section settings-page"><div className="settings-actions"><button className="secondary-button" onClick={onClose}>Close</button><button className="primary-button" onClick={onClose}>Save</button></div><div className="settings-layout"><div className="settings-nav"><p className="eyebrow">Preferences</p><button className="settings-nav-active" onClick={() => jumpTo('settings-timer')}>Timer</button><button onClick={() => jumpTo('settings-presets')}>Presets</button><button onClick={() => jumpTo('settings-appearance')}>Appearance</button><button onClick={() => jumpTo('settings-visual')}>Timer visual</button><button onClick={() => jumpTo('settings-sounds')}>Sounds</button><button onClick={() => jumpTo('settings-behavior')}>Behavior</button><button onClick={() => jumpTo('settings-data')}>Data</button></div><div className="settings-content"><SettingGroup id="settings-timer" title="Timer" description="Set the way a session begins and ends."><SettingRow label="Default timer mode" description="The mode shown when Tempo opens."><select value={settings.defaultMode} onChange={(event) => updateSetting('defaultMode', event.target.value as Mode)}><option value="pomodoro">Pomodoro</option><option value="stopwatch">Stopwatch</option><option value="until">Until</option></select></SettingRow><SettingRow label="Default Pomodoro preset" description="Your starting rhythm for new sessions."><select value={settings.defaultPresetId} onChange={(event) => updateSetting('defaultPresetId', event.target.value)}>{presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name} · {preset.focus}/{preset.break}</option>)}</select></SettingRow><SettingRow label="Automatically start breaks" description="Move into the break without stopping."><Toggle checked={settings.autoStartBreaks} onChange={(value) => updateSetting('autoStartBreaks', value)} /></SettingRow><SettingRow label="Automatically start focus sessions" description="Start the next focus after a break."><Toggle checked={settings.autoStartFocus} onChange={(value) => updateSetting('autoStartFocus', value)} /></SettingRow><SettingRow label="Show seconds" description="Keep seconds visible during countdowns."><Toggle checked={settings.showSeconds} onChange={(value) => updateSetting('showSeconds', value)} /></SettingRow><SettingRow label="Confirm before resetting" description="Prevent accidental resets while running."><Toggle checked={settings.confirmReset} onChange={(value) => updateSetting('confirmReset', value)} /></SettingRow><SettingRow label="Focus mode visuals" description="Dim and blur surrounding UI while a timer is running."><Toggle checked={settings.focusMode} onChange={(value) => updateSetting('focusMode', value)} /></SettingRow><SettingRow label="Desktop notifications" description="Notify you when focus, breaks, or target times end."><Toggle checked={settings.notifications} onChange={(value) => updateSetting('notifications', value)} /></SettingRow></SettingGroup><PresetsPage presets={presets} setPresets={setPresets} selectedPresetId={selectedPresetId} changePreset={changePreset} notify={notify} embedded /><SettingGroup id="settings-appearance" title="Appearance" description="A quiet canvas for your attention."><SettingRow label="Color mode" description="Choose light, dark, or follow your system."><div className="segmented">{(['light', 'dark', 'system'] as Appearance[]).map((item) => <button className={settings.appearance === item ? 'selected' : ''} key={item} onClick={() => updateSetting('appearance', item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div></SettingRow><SettingRow label="Accent color" description="Used sparingly for progress and focus states."><div className="accent-picker">{accents.map((accent) => <button key={accent.value} aria-label={accent.name} className={settings.accent === accent.value ? 'accent-selected' : ''} style={{ background: accent.value }} onClick={() => updateSetting('accent', accent.value)} />)}<input aria-label="Custom accent color" type="color" value={settings.accent} onChange={(event) => updateSetting('accent', event.target.value)} /></div></SettingRow></SettingGroup><SettingGroup id="settings-visual" title="Timer visual" description="Choose the way time moves in front of you."><div className="visual-grid">{visualOptions.map((option) => <button className={`visual-option ${settings.visual === option.id ? 'selected' : ''}`} key={option.id} onClick={() => updateSetting('visual', option.id)}><div className={`mini-visual mini-${option.id}`}><span /></div><strong>{option.label}</strong><small>{option.description}</small></button>)}</div></SettingGroup><SettingGroup id="settings-sounds" title="Sounds & behavior" description="Keep the environment supportive and quiet."><span id="settings-behavior" className="settings-anchor" /><SettingRow label="Completion sound" description="A soft cue when a session ends."><Toggle checked={settings.sound} onChange={(value) => updateSetting('sound', value)} /></SettingRow><SettingRow label="Volume" description="Completion sound volume."><input className="range" type="range" min="0" max="100" value={settings.volume} onChange={(event) => updateSetting('volume', Number(event.target.value))} /></SettingRow><SettingRow label="Keep screen awake" description="Request the browser to keep your display awake while running."><Toggle checked={settings.keepAwake} onChange={(value) => updateSetting('keepAwake', value)} /></SettingRow><SettingRow label="Keyboard shortcuts" description="Space start/pause · R reset · 1/2/3 switch modes."><span className="shortcut-list"><kbd>Space</kbd><kbd>R</kbd><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span></SettingRow></SettingGroup><SettingGroup id="settings-data" title="Data" description="Tempo keeps everything on this device. No account required."><button className="danger-button" onClick={resetAll}>Reset all Tempo settings</button></SettingGroup></div></div></section>
 }
 
-function SettingGroup({ title, description, children }: { title: string; description: string; children: ReactNode }) { return <section className="setting-group"><div className="group-heading"><h2>{title}</h2><p>{description}</p></div><div className="setting-rows">{children}</div></section> }
+function SettingGroup({ id, title, description, children }: { id?: string; title: string; description: string; children: ReactNode }) { return <section id={id} className="setting-group"><div className="group-heading"><h2>{title}</h2><p>{description}</p></div><div className="setting-rows">{children}</div></section> }
 function SettingRow({ label, description, children }: { label: string; description: string; children: ReactNode }) { return <div className="setting-row"><div><strong>{label}</strong><p>{description}</p></div><div className="setting-control">{children}</div></div> }
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (value: boolean) => void }) { return <button className={`toggle ${checked ? 'on' : ''}`} role="switch" aria-checked={checked} onClick={() => onChange(!checked)}><span /></button> }
 function TaskModal({ value, setValue, onClose, onSave }: { value: string; setValue: (value: string) => void; onClose: () => void; onSave: () => void }) { return <div className="modal-backdrop"><div className="modal task-modal"><div className="modal-header"><div><p className="eyebrow">Your intention</p><h2>What will you focus on?</h2></div><button className="close-button" onClick={onClose}>×</button></div><label>Focused task<input autoFocus maxLength={80} value={value} placeholder="Study chapter 4" onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') onSave() }} /></label><div className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" onClick={onSave}>Save task</button></div></div></div> }
