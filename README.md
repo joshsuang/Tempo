@@ -24,12 +24,12 @@ Tempo is a lightweight local-first focus timer designed to feel at home on a Mac
 | Focus mode | Optional dimming/blur, centered active content, adjustable intensity, mini timer layout |
 | Controls | Pause/resume, reset, ±5/±10 minute buttons, keyboard duration adjustments |
 | Notifications | Desktop notifications for completions and Pomodoro transitions |
-| Sounds | Completion sound, volume control, test sound action |
+| Sounds | Soft bell, gentle chime, low tone, volume control, test sound action |
 | Persistence | LocalStorage timer recovery, preferences, presets, tasks, recent sessions |
 | Data | Local JSON export and import |
 | Appearance | Light, dark, system appearance, accent color customization |
 | Accessibility | Semantic controls, focus states, live timer/completion announcements, reduced motion support |
-| Installability | Tempo favicon, branded app icon, Apple touch icon, web manifest |
+| Installability | Offline-ready service worker, Tempo favicon, branded app icon, Apple touch icon, web manifest |
 
 ## Timer modes
 
@@ -98,6 +98,7 @@ Focus mode is optional and can be configured in Settings. When enabled, Tempo ca
 - Dim and blur surrounding interface elements while running
 - Keep Until and Countdown setup controls out of the way while active
 - Use a subtle, focused, or immersive intensity
+- Preview intensity changes in Settings
 - Switch to a compact mini timer layout
 
 The Reset control remains a clear rectangular button, while the primary start/pause action can use the focused icon treatment.
@@ -111,6 +112,7 @@ Tempo does not require an account. It stores data locally in the browser, includ
 - Focused task and recent task templates
 - Recent Countdown durations
 - Recent completed sessions
+- Configurable Until completion behavior
 - Active timer state for resume-on-reopen
 
 Settings also include **Export Tempo data** and **Import Tempo data** for local backups.
@@ -178,6 +180,7 @@ Tempo intentionally does **not** include accounts, streaks, achievements, goals,
 - Desktop notifications require browser permission.
 - Wake Lock and audio are optional browser capabilities and degrade gracefully when unavailable.
 - Background-safe timer calculations use wall-clock timestamps rather than relying only on interval accuracy.
+- A service worker provides offline app-shell support after the first visit.
 
 ## Tech stack
 

@@ -184,3 +184,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 @media (prefers-reduced-motion: reduce) {
   .timer-page, .settings-page, .resume-card, .completion-card, .modal-backdrop, .tempo-command-overlay, .modal, .tempo-command-panel, .status-dot.live, .focus-mode .timer-readout { animation: none !important; }
 }
+
+.focus-intensity-preview { display: grid; gap: 4px; margin-bottom: 12px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; position: relative; }
+.focus-intensity-preview::before { content: ''; position: absolute; inset: 0; background: rgba(20,22,31,.12); backdrop-filter: blur(2px); pointer-events: none; }.focus-intensity-preview > * { position: relative; }.focus-intensity-preview span { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .12em; }.focus-intensity-preview strong { font-size: 14px; }.focus-intensity-preview small { color: var(--accent); font-size: 10px; }.preview-subtle::before { opacity: .4; backdrop-filter: blur(1px); }.preview-immersive::before { opacity: 1; backdrop-filter: blur(5px); }
