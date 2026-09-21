@@ -115,3 +115,21 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .focus-mode .timer-controls .secondary-button em { display: inline; }
 .focus-mode .timer-controls .secondary-button .reset-icon { margin: 0 8px 0 0; font-size: 11px; }
 .focus-mode .timer-controls .secondary-button .shortcut { display: inline; margin-left: 12px; }
+
+/* Focus mode keeps the timer composition centered even before a session starts. */
+.focus-layout .timer-stage { text-align: center; }
+.focus-layout .session-context { width: 100%; justify-content: center; text-align: center; }
+.focus-layout .next-up-inline { justify-items: center; }
+.focus-layout .task-row { width: min(820px, calc(100% - 24px)); max-width: 820px; justify-content: center; text-align: center; }
+.focus-layout .task-copy { flex: 0 1 auto; width: min(100%, 820px); max-width: 820px; text-align: center; }
+.focus-layout .task-copy strong, .focus-layout .empty-task { display: block; max-width: none; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+
+/* Focus layout keeps Start consistent before and during a session; Reset remains rectangular. */
+.focus-layout .timer-controls .primary-button { width: 68px; min-width: 68px; height: 68px; border-radius: 50%; padding: 0; display: inline-grid; place-items: center; font-size: 20px; }
+.focus-layout .timer-controls .primary-button em { display: none; }
+.focus-layout .timer-controls .primary-button span { margin: 0; font-size: 27px; }
+.focus-layout .timer-controls .secondary-button { width: auto; min-width: 96px; height: 40px; border-radius: 7px; padding: 0 21px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+.focus-layout .timer-controls .secondary-button em { display: inline; }
+.focus-layout .timer-controls .secondary-button .reset-icon { margin: 0 8px 0 0; font-size: 11px; }
+.focus-layout .timer-controls .secondary-button .shortcut { display: inline; margin-left: 12px; }
+@media (max-width: 560px) { .focus-layout .timer-controls .primary-button { width: 62px; min-width: 62px; height: 62px; }.focus-layout .timer-controls .primary-button span { font-size: 24px; } }
