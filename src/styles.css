@@ -92,3 +92,20 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .focus-mode .task-row { width: min(820px, calc(100% - 24px)); max-width: 820px; justify-content: center; text-align: center; }
 .focus-mode .task-copy { flex: 0 1 auto; width: min(100%, 820px); max-width: 820px; text-align: center; }
 .focus-mode .task-copy strong, .focus-mode .empty-task { display: block; max-width: none; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+
+.focus-subtle .main-content::before { background: rgba(20,22,31,.07); backdrop-filter: blur(1px); }
+.focus-immersive .main-content::before { background: rgba(20,22,31,.22); backdrop-filter: blur(4px); }
+.mini-timer .main-content { max-width: 560px; padding: 22px 28px 28px; }
+.mini-timer .mode-tabs, .mini-timer .session-context, .mini-timer .until-picker, .mini-timer .countdown-picker, .mini-timer .stage-meta, .mini-timer .task-icon, .mini-timer .task-actions { display: none; }
+.mini-timer .timer-page { margin-top: 12px; }.mini-timer .timer-stage { padding-top: 12px; }.mini-timer .timer-heading { margin-top: 4px; }.mini-timer .visual-wrap { display: none; }.mini-timer .timer-readout { font-size: 72px; }.mini-timer .timer-controls { margin-top: 14px; }.mini-timer .task-row { margin-top: 14px; max-width: 100%; justify-content: center; text-align: center; }.mini-timer .task-copy { text-align: center; }.mini-timer .task-copy strong, .mini-timer .empty-task { white-space: normal; overflow-wrap: anywhere; }
+.data-actions { display: flex; gap: 7px; margin-bottom: 12px; }.recent-sessions { display: grid; gap: 5px; margin: 12px 0 16px; }.recent-sessions strong { font-size: 10px; }.recent-sessions span { color: var(--muted); font-size: 10px; }
+
+.modal-hint { display: block; margin-top: 8px; color: var(--muted); font-size: 10px; }
+
+.time-adjustments { display: flex; align-items: center; gap: 4px; }
+.time-adjustments button { min-width: 31px; height: 25px; padding: 0 5px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--muted); font: 9px 'DM Mono', monospace; transition: color .2s ease, border-color .2s ease, background .2s ease, opacity .2s ease; }
+.time-adjustments button:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent), transparent 92%); }
+.time-adjustments button:disabled { opacity: .32; cursor: not-allowed; }
+.focus-mode .time-adjustments { gap: 5px; }
+.focus-mode .time-adjustments button { min-width: 35px; height: 29px; font-size: 10px; }
+@media (max-width: 560px) { .time-adjustments { gap: 3px; }.time-adjustments button { min-width: 28px; padding: 0 4px; font-size: 8px; }.focus-mode .time-adjustments button { min-width: 31px; } }
