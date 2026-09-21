@@ -133,3 +133,15 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .focus-layout .timer-controls .secondary-button .reset-icon { margin: 0 8px 0 0; font-size: 11px; }
 .focus-layout .timer-controls .secondary-button .shortcut { display: inline; margin-left: 12px; }
 @media (max-width: 560px) { .focus-layout .timer-controls .primary-button { width: 62px; min-width: 62px; height: 62px; }.focus-layout .timer-controls .primary-button span { font-size: 24px; } }
+
+/* Keep task context compact instead of stretching a horizontal line across the stage. */
+.focus-layout .task-row { width: min(100%, 520px); max-width: 520px; }
+.focus-layout .task-copy { width: auto; max-width: 520px; }
+
+/* Start and Reset use the same compact rectangular, icon-only control treatment everywhere. */
+.timer-controls .primary-button, .timer-controls .secondary-button { width: 40px; min-width: 40px; height: 40px; padding: 0; border-radius: 7px; display: inline-grid; place-items: center; }
+.timer-controls .primary-button em, .timer-controls .secondary-button em, .timer-controls .shortcut { display: none !important; }
+.timer-controls .primary-button span, .timer-controls .secondary-button .reset-icon { margin: 0; font-size: 15px; }
+.focus-layout .timer-controls .primary-button, .focus-layout .timer-controls .secondary-button { width: 40px; min-width: 40px; height: 40px; border-radius: 7px; padding: 0; }
+.focus-layout .timer-controls .primary-button span, .focus-layout .timer-controls .secondary-button .reset-icon { margin: 0; font-size: 15px; }
+@media (max-width: 560px) { .timer-controls .primary-button, .timer-controls .secondary-button, .focus-layout .timer-controls .primary-button, .focus-layout .timer-controls .secondary-button { width: 40px; min-width: 40px; height: 40px; } }
