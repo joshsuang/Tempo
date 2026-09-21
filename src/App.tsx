@@ -121,13 +121,20 @@ const playCompletionSound = (volume: number) => {
   } catch { /* Audio is optional and can be blocked by the browser. */ }
 }
 const parseDuration = (value: string) => {
-  const normalized = value.trim().toLowerCase().replace(/\s+/g, '')
+  const normalized = value.trim().toLowerCase().replace(/,/g, '.').replace(/\s+/g, '')
   if (!normalized) return 0
   if (/^\d+$/.test(normalized)) return clamp(Number(normalized), 1, 720)
-  const hours = Number(normalized.match(/(\d+(?:\.\d+)?)h/)?.[1] ?? 0)
-  const minutes = Number(normalized.match(/(\d+)m/)?.[1] ?? 0)
-  const total = Math.round(hours * 60 + minutes)
-  return total > 0 ? clamp(total, 1, 720) : 0
+  const clock = normalized.match(/^(\d+):(\d{1,2})$/)
+  if (clock) return clamp(Number(clock[1]) * 60 + Number(clock[2]), 1, 720)
+  const hours = normalized.match(/^(\d+(?:\.\d+)?)h/)
+  if (hours) {
+    const remainder = normalized.slice(hours[0].length).replace(/m$/, '')
+    const minutes = remainder && /^\d+$/.test(remainder) ? Number(remainder) : 0
+    return clamp(Math.round(Number(hours[1]) * 60 + minutes), 1, 720)
+  }
+  const minutes = normalized.match(/^(\d+(?:\.\d+)?)m$/)
+  if (minutes) return clamp(Math.round(Number(minutes[1])), 1, 720)
+  return 0
 }
 const formatUntil = (seconds: number, showSeconds = true) => {
   const safe = Math.max(0, Math.floor(seconds))
