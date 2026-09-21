@@ -164,3 +164,23 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   .focus-layout .timer-controls .primary-button, .focus-layout .timer-controls .secondary-button { width: 46px; min-width: 46px; height: 46px; }.focus-layout .timer-controls .primary-button span, .focus-layout .timer-controls .secondary-button .reset-icon { font-size: 17px; }
   .focus-layout .task-row { max-width: 760px; }
 }
+
+/* Quiet motion system: soft entrances, restrained feedback, and no distracting loops. */
+.timer-page, .settings-page { animation: tempo-page-in .42s cubic-bezier(.22,1,.36,1) both; }
+.mode-tabs button, .preset-pill, .task-action, .time-adjustments button, .primary-button, .secondary-button, .settings-nav button, .visual-option { transition: transform .2s cubic-bezier(.22,1,.36,1), color .2s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease; }
+.mode-tabs button:active, .preset-pill:active, .task-action:active, .time-adjustments button:active, .primary-button:active, .secondary-button:active { transform: scale(.97); }
+.status-dot.live { animation: tempo-status-pulse 2.8s ease-in-out infinite; }
+.focus-mode .timer-readout { animation: tempo-breathe 6s ease-in-out infinite; }
+.resume-card, .completion-card { animation: tempo-card-in .42s cubic-bezier(.22,1,.36,1) both; }
+.modal-backdrop, .tempo-command-overlay { animation: tempo-overlay-in .28s ease both; }
+.modal, .tempo-command-panel { animation: tempo-panel-in .42s cubic-bezier(.34,1.28,.64,1) both; }
+
+@keyframes tempo-page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes tempo-card-in { from { opacity: 0; transform: translateY(-7px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes tempo-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tempo-panel-in { from { opacity: 0; transform: translateY(10px) scale(.975); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes tempo-status-pulse { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent), transparent 96%); } }
+@keyframes tempo-breathe { 0%, 100% { text-shadow: 0 8px 28px color-mix(in srgb, var(--accent), transparent 86%); } 50% { text-shadow: 0 10px 34px color-mix(in srgb, var(--accent), transparent 76%); } }
+@media (prefers-reduced-motion: reduce) {
+  .timer-page, .settings-page, .resume-card, .completion-card, .modal-backdrop, .tempo-command-overlay, .modal, .tempo-command-panel, .status-dot.live, .focus-mode .timer-readout { animation: none !important; }
+}
