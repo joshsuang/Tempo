@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-type Mode = 'pomodoro' | 'stopwatch' | 'until'
+type Mode = 'pomodoro' | 'stopwatch' | 'until' | 'countdown'
 
 type CommandPaletteProps = {
   open: boolean
@@ -24,6 +24,7 @@ export default function CommandPalette({ open, onClose, mode, running, onStartPa
     { icon: '◷', label: 'Switch to Pomodoro', action: () => onMode('pomodoro') },
     { icon: '↗', label: 'Switch to Stopwatch', action: () => onMode('stopwatch') },
     { icon: '◌', label: 'Switch to Until', action: () => onMode('until') },
+    { icon: '⌛', label: 'Switch to Countdown', action: () => onMode('countdown') },
     { icon: '⚙', label: 'Open Settings', action: onSettings },
     { icon: '◐', label: 'Toggle appearance', action: onAppearance },
   ]
