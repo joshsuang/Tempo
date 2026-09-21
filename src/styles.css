@@ -109,3 +109,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .focus-mode .time-adjustments { gap: 5px; }
 .focus-mode .time-adjustments button { min-width: 35px; height: 29px; font-size: 10px; }
 @media (max-width: 560px) { .time-adjustments { gap: 3px; }.time-adjustments button { min-width: 28px; padding: 0 4px; font-size: 8px; }.focus-mode .time-adjustments button { min-width: 31px; } }
+
+/* Reset stays a clear rectangular action even while focus mode enlarges the primary control. */
+.focus-mode .timer-controls .secondary-button { width: auto; min-width: 96px; height: 40px; border-radius: 7px; padding: 0 21px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+.focus-mode .timer-controls .secondary-button em { display: inline; }
+.focus-mode .timer-controls .secondary-button .reset-icon { margin: 0 8px 0 0; font-size: 11px; }
+.focus-mode .timer-controls .secondary-button .shortcut { display: inline; margin-left: 12px; }
