@@ -11,16 +11,23 @@ type CommandPaletteProps = {
   onMode: (mode: Mode) => void
   onSettings: () => void
   onAppearance: () => void
+  onAdjustTime: (minutes: number) => void
+  onEditTask: () => void
+  onClearTask: () => void
 }
 type Command = { icon: string; label: string; action: () => void }
 
-export default function CommandPalette({ open, onClose, mode, running, onStartPause, onReset, onMode, onSettings, onAppearance }: CommandPaletteProps) {
+export default function CommandPalette({ open, onClose, mode, running, onStartPause, onReset, onMode, onSettings, onAppearance, onAdjustTime, onEditTask, onClearTask }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const commands: Command[] = [
     { icon: running ? 'Ⅱ' : '▶', label: running ? 'Pause timer' : 'Start timer', action: onStartPause },
     { icon: '↻', label: 'Reset timer', action: onReset },
+    { icon: '+', label: 'Add 5 minutes', action: () => onAdjustTime(5) },
+    { icon: '−', label: 'Remove 5 minutes', action: () => onAdjustTime(-5) },
+    { icon: '✎', label: 'Edit focused task', action: onEditTask },
+    { icon: '×', label: 'Clear focused task', action: onClearTask },
     { icon: '◷', label: 'Switch to Pomodoro', action: () => onMode('pomodoro') },
     { icon: '↗', label: 'Switch to Stopwatch', action: () => onMode('stopwatch') },
     { icon: '◌', label: 'Switch to Until', action: () => onMode('until') },
