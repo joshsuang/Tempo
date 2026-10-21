@@ -26,6 +26,8 @@ export default function CommandPalette({ open, onClose, mode, running, onStartPa
     { icon: '↻', label: 'Reset timer', action: onReset },
     { icon: '+', label: 'Add 5 minutes', action: () => onAdjustTime(5) },
     { icon: '−', label: 'Remove 5 minutes', action: () => onAdjustTime(-5) },
+    { icon: '+', label: 'Add 10 minutes', action: () => onAdjustTime(10) },
+    { icon: '−', label: 'Remove 10 minutes', action: () => onAdjustTime(-10) },
     { icon: '✎', label: 'Edit focused task', action: onEditTask },
     { icon: '×', label: 'Clear focused task', action: onClearTask },
     { icon: '◷', label: 'Switch to Pomodoro', action: () => onMode('pomodoro') },
