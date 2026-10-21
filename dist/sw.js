@@ -1,4 +1,4 @@
-const CACHE = 'tempo-shell-v1';
+const CACHE = 'tempo-shell-v2';
 const APP_SHELL = ['/', '/index.html', '/tempo-icon.svg', '/manifest.webmanifest'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));

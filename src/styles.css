@@ -187,3 +187,126 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 
 .focus-intensity-preview { display: grid; gap: 4px; margin-bottom: 12px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; position: relative; }
 .focus-intensity-preview::before { content: ''; position: absolute; inset: 0; background: rgba(20,22,31,.12); backdrop-filter: blur(2px); pointer-events: none; }.focus-intensity-preview > * { position: relative; }.focus-intensity-preview span { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .12em; }.focus-intensity-preview strong { font-size: 14px; }.focus-intensity-preview small { color: var(--accent); font-size: 10px; }.preview-subtle::before { opacity: .4; backdrop-filter: blur(1px); }.preview-immersive::before { opacity: 1; backdrop-filter: blur(5px); }
+
+/* Pure focus mode: only the visual and the readout stay on screen.
+   Everything else — topbar, mode tabs, status, controls, pickers, sidebar — is removed.
+   The task row only appears when a task is actually set (handled in App.tsx).
+   Click the readout (or press Space) to pause and get the UI back. */
+.focus-mode .sidebar { display: none; }
+.focus-mode .topbar,
+.focus-mode .mode-tabs,
+.focus-mode .resume-card,
+.focus-mode .completion-card { display: none; }
+.focus-mode .main-content::before { content: none; }
+.focus-mode .main-content { display: flex; flex-direction: column; justify-content: center; }
+.focus-mode .timer-page { margin-top: 0; }
+.focus-mode .timer-stage { transform: none; padding: 20px 8px 12px; }
+.focus-mode .stage-meta,
+.focus-mode .timer-heading,
+.focus-mode .session-context,
+.focus-mode .until-picker,
+.focus-mode .countdown-picker,
+.focus-mode .timer-controls { display: none; }
+.focus-mode .visual-wrap { transform: none; margin: 0 auto; }
+.focus-mode .timer-readout { transform: none; cursor: pointer; user-select: none; }
+.focus-mode .task-row { transform: none; }
+
+/* Running focus mode fills the window. The timer, its visual, the task, and the
+   space around them all scale from the stage size, which tracks the window. */
+html:has(.focus-mode),
+body:has(.focus-mode) { height: 100%; min-height: 100dvh; overflow: hidden; }
+body:has(.focus-mode) { min-width: 0; }
+body:has(.focus-mode) #root,
+.focus-mode.app-shell { height: 100dvh; min-height: 0; }
+.focus-mode.app-shell { width: 100%; max-height: 100dvh; overflow: hidden; }
+.focus-mode .main-content {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: clamp(12px, 4.5vmin, 80px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.focus-mode .timer-page {
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.focus-mode .timer-stage {
+  --u: 6px;
+  --visual-scale: 1;
+  --ring: calc(var(--u) * 78);
+  --gap: calc(var(--u) * 5);
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  transform: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+}
+.focus-mode .timer-stage:has(.task-row) { --ring: calc(var(--u) * 62); --gap: calc(var(--u) * 4.5); }
+.focus-mode .timer-stage:has(.circle-visual) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  justify-items: center;
+}
+.focus-mode .visual-wrap:not(.circle-visual) {
+  position: relative;
+  width: 320px;
+  min-width: 320px;
+  max-width: none;
+  height: auto;
+  margin: 0;
+  transform: none;
+  zoom: var(--visual-scale);
+}
+.focus-mode .circle-visual,
+.focus-mode .circle-visual svg {
+  width: var(--ring);
+  height: var(--ring);
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  transform: none;
+}
+.focus-mode .timer-stage:has(.circle-visual) .circle-visual,
+.focus-mode .timer-stage:has(.circle-visual) .timer-readout { grid-row: 1; grid-column: 1; }
+.focus-mode .timer-stage:has(.circle-visual) .timer-readout { align-self: center; justify-self: center; z-index: 1; }
+.focus-mode .timer-stage:has(.circle-visual) .task-row { grid-row: 2; grid-column: 1; }
+.focus-mode .circle-tick { width: calc(var(--ring) * 0.012); height: calc(var(--ring) * 0.012); }
+.focus-mode .circle-tick.top { top: calc(var(--ring) * 0.015); }
+.focus-mode .circle-tick.bottom { bottom: calc(var(--ring) * 0.018); }
+.focus-mode .timer-readout {
+  margin: 0;
+  font-size: calc(var(--u) * 20);
+  line-height: 0.92;
+  letter-spacing: -0.07em;
+  text-shadow: none;
+}
+.focus-mode .timer-stage:has(.circle-visual) .timer-readout { font-size: calc(var(--ring) * 0.3); }
+.focus-mode .task-row {
+  width: min(92%, calc(var(--u) * 78));
+  max-width: 92%;
+  min-height: 0;
+  margin: 0;
+}
+.focus-mode .task-copy strong,
+.focus-mode .empty-task { font-size: calc(var(--u) * 4.8); }

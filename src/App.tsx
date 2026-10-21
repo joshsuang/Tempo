@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import CommandPalette from './CommandPalette'
 
 type Mode = 'pomodoro' | 'stopwatch' | 'until' | 'countdown'
@@ -412,7 +412,7 @@ function App() {
     localStorage.removeItem(STORAGE_KEY); window.location.reload()
   }
 
-  return <div className={`app-shell ${settings.focusMode ? 'focus-layout' : ''} ${running && settings.focusMode ? `focus-mode focus-${settings.focusIntensity}` : ''} ${settings.miniTimer ? 'mini-timer' : ''}`}>
+  return <div className={`app-shell ${settings.focusMode ? 'focus-layout' : ''} ${running && settings.focusMode && page === 'timer' ? `focus-mode focus-${settings.focusIntensity}` : ''} ${settings.miniTimer ? 'mini-timer' : ''}`}>
     <main className="main-content">
       <header className={`topbar ${page === 'timer' ? 'timer-topbar' : ''}`}>
         <button className="brand" aria-label="Go to Timer" onClick={() => setPage('timer')}><img className="brand-mark" src="/tempo-icon.svg" alt="" /><span>tempo</span></button>
@@ -440,20 +440,38 @@ type TimerPageProps = {
 function TimerPage(props: TimerPageProps) {
   const { resumeAvailable, onResume, onDismissResume, completion, onCompletionDone, onCompletionStart, onRepeat, mode, changeMode, selectedPreset, selectedPresetId, changePreset, presets, phase, remaining, running, toggleTimer, resetTimer, displayTime, progress, task, openTaskEditor, clearTask, adjustTime, settings, untilTarget, setUntilTarget, getUntilSeconds, customCountdownMinutes, countdownInput, recentDurations, setCountdownInput, setCountdownValue, setCustomCountdownMinutes } = props
   const phaseLabel = mode === 'pomodoro' ? (phase === 'focus' ? 'Focus session' : 'Break time') : mode === 'stopwatch' ? 'Open-ended' : mode === 'until' ? 'Until your target' : 'Custom countdown'
+  const focusLive = running && settings.focusMode
+  const stageRef = useRef<HTMLDivElement>(null)
+  const [focusScale, setFocusScale] = useState({ unit: 6, visualScale: 1 })
+  useLayoutEffect(() => {
+    const node = stageRef.current
+    if (!focusLive || !node) return
+    const measure = () => {
+      const minSide = Math.max(1, Math.min(node.clientWidth, node.clientHeight))
+      const hasTask = task.trim().length > 0
+      const unit = minSide / 100
+      const visualScale = (minSide * (hasTask ? 0.7 : 0.82)) / 320
+      setFocusScale((current) => Math.abs(current.unit - unit) < 0.05 && Math.abs(current.visualScale - visualScale) < 0.005 ? current : { unit, visualScale })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [focusLive, task])
   return <section className="timer-page">
     {resumeAvailable && <div className="resume-card" role="dialog" aria-label="Resume previous timer"><div><strong>Resume your previous session?</strong><span>The timer was active when Tempo was closed.</span></div><div className="resume-actions"><button className="secondary-button" onClick={onDismissResume}>Discard</button><button className="primary-button" onClick={onResume}>Resume</button></div></div>}
     {completion && <div className="completion-card" role="status" aria-live="polite"><div><strong>{completion.title}</strong><span>{completion.body}</span></div><div className="completion-actions">{completion.pomodoro && <><button className="primary-button small" onClick={() => onCompletionStart(false)}>Start break</button><button className="secondary-button small" onClick={() => onCompletionStart(true)}>Start focus</button></>}<button className="secondary-button small" onClick={onRepeat}>Repeat</button>{!completion.pomodoro && mode === 'countdown' && <button className="primary-button small" onClick={() => onCompletionStart()}>Add 5 min</button>}<button className="secondary-button small" onClick={onCompletionDone}>Done</button></div></div>}
     <div className="mode-tabs" role="tablist" aria-label="Timer modes">{(['pomodoro', 'stopwatch', 'until', 'countdown'] as Mode[]).map((item) => <button key={item} className={mode === item ? 'selected' : ''} onClick={() => changeMode(item)}>{modeName(item)}</button>)}</div>
-    <div className="timer-stage">
+    <div className="timer-stage" ref={stageRef} style={focusLive ? { '--u': `${focusScale.unit}px`, '--visual-scale': focusScale.visualScale } as CSSProperties : undefined}>
       <div className="stage-meta"><span className={`status-dot ${running ? 'live' : ''}`} />{running ? 'In progress' : 'Ready when you are'}</div>
       <div className="timer-heading"><span>{phaseLabel}{mode === 'until' && <> <button className="edit-until-button" onClick={() => { if (running) toggleTimer(); }} aria-label="Edit Until timer">(Edit timer)</button></>}</span>{mode === 'pomodoro' && <span className="session-count">{selectedPreset.focus}/{selectedPreset.break} min</span>}</div>
       {mode === 'pomodoro' && <div className="session-context"><div><div className="preset-button-list" role="listbox" aria-label="Pomodoro presets">{presets.map((preset) => <button type="button" role="option" aria-selected={preset.id === selectedPresetId} className={`preset-pill ${preset.id === selectedPresetId ? 'chosen' : ''}`} key={preset.id} onClick={() => changePreset(preset.id)}><span>{preset.name}</span><small>{preset.focus}/{preset.break}</small></button>)}</div></div><div className="next-up-inline"><strong>{phase === 'focus' ? `Break · ${selectedPreset.break} min` : `Focus · ${selectedPreset.focus} min`}</strong></div></div>}
       {mode === 'until' && <div className="until-picker"><label htmlFor="until-target">UNTIL</label><input id="until-target" aria-label="Set target time" type="time" value={untilTarget} onChange={(event) => setUntilTarget(event.target.value)} /><span>{getUntilSeconds() > 0 ? `${Math.ceil(getUntilSeconds() / 60)} min remaining` : 'Choose a future time'}</span></div>}
       {mode === 'countdown' && <div className="countdown-picker"><label htmlFor="countdown-minutes">COUNT DOWN FROM</label><div className="countdown-input"><input id="countdown-minutes" aria-label="Custom countdown duration" type="text" inputMode="text" placeholder="45m or 1h 20m" value={countdownInput} disabled={running} onBlur={() => { if (!parseDuration(countdownInput)) setCountdownInput(`${customCountdownMinutes}m`) }} onChange={(event) => { setCountdownInput(event.target.value); const parsed = parseDuration(event.target.value); if (parsed) setCountdownValue(parsed) }} /><span>minutes</span></div><small>Try 45m or 1h 20m</small><div className="recent-duration-list" aria-label="Countdown presets">{countdownQuickPresets.map((preset) => <button type="button" key={preset.name} onClick={() => setCustomCountdownMinutes(preset.minutes)}>{preset.name} · {preset.minutes}m</button>)}{settings.showRecentCountdowns && recentDurations.map((duration) => <button type="button" key={`recent-${duration}`} onClick={() => setCustomCountdownMinutes(duration)}>Recent · {duration}m</button>)}</div></div>}
       <TimerVisual visual={settings.visual} progress={progress} running={running} accent={settings.accent} />
-      <div className="timer-readout" aria-live="polite">{displayTime}</div>
+      <div className="timer-readout" aria-live="polite" title={running && settings.focusMode ? 'Pause' : undefined} onClick={running && settings.focusMode ? toggleTimer : undefined}>{displayTime}</div>
       <div className="timer-controls"><div className="time-adjustments" aria-label="Adjust timer duration"><button type="button" aria-label="Remove 10 minutes" title="Remove 10 minutes" onClick={() => adjustTime(-10)} disabled={mode === 'until' || mode === 'stopwatch' || remaining <= 0}>−10</button><button type="button" aria-label="Remove 5 minutes" title="Remove 5 minutes" onClick={() => adjustTime(-5)} disabled={mode === 'until' || mode === 'stopwatch' || remaining <= 0}>−5</button></div><button className="primary-button" aria-label={running ? 'Pause timer' : 'Start timer'} onClick={toggleTimer}><span>{running ? 'Ⅱ' : '▶'}</span><em>{running ? 'Pause' : 'Start'}</em></button><button className="secondary-button" aria-label="Reset timer" onClick={resetTimer}><span className="reset-icon">↻</span><em>Reset</em> <span className="shortcut">R</span></button><div className="time-adjustments" aria-label="Add time to timer"><button type="button" aria-label="Add 5 minutes" title="Add 5 minutes" onClick={() => adjustTime(5)} disabled={mode === 'until' || mode === 'stopwatch'}>+5</button><button type="button" aria-label="Add 10 minutes" title="Add 10 minutes" onClick={() => adjustTime(10)} disabled={mode === 'until' || mode === 'stopwatch'}>+10</button></div></div>
-      <div className="task-row"><div className="task-icon">⌁</div><div className="task-copy">{task ? <><span className="task-label">FOCUSING ON</span><strong>{task}</strong></> : <span className="empty-task">What are you focusing on?</span>}</div><div className="task-actions"><button className="task-action edit-task" aria-label={task ? 'Edit focused task' : 'Add focused task'} title={`${task ? 'Edit' : 'Add'} task (E)`} onClick={openTaskEditor}>✎</button><button className="task-action clear-task" aria-label="Clear focused task" title="Clear task" onClick={clearTask} disabled={!task}>×</button></div></div>
+      {(!running || !settings.focusMode || task.trim().length > 0) && <div className="task-row"><div className="task-icon">⌁</div><div className="task-copy">{task ? <><span className="task-label">FOCUSING ON</span><strong>{task}</strong></> : <span className="empty-task">What are you focusing on?</span>}</div><div className="task-actions"><button className="task-action edit-task" aria-label={task ? 'Edit focused task' : 'Add focused task'} title={`${task ? 'Edit' : 'Add'} task (E)`} onClick={openTaskEditor}>✎</button><button className="task-action clear-task" aria-label="Clear focused task" title="Clear task" onClick={clearTask} disabled={!task}>×</button></div></div>}
     </div>
 
   </section>
